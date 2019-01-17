@@ -35,6 +35,7 @@ import (
 	"github.com/kubernetes-incubator/metrics-server/pkg/manager"
 	"github.com/kubernetes-incubator/metrics-server/pkg/provider/sink"
 	"github.com/kubernetes-incubator/metrics-server/pkg/sources"
+	"github.com/kubernetes-incubator/metrics-server/pkg/sources/coreprometheus"
 	"github.com/kubernetes-incubator/metrics-server/pkg/sources/summary"
 )
 
@@ -172,7 +173,7 @@ func (o MetricsServerOptions) Run(stopCh <-chan struct{}) error {
 
 	// set up the source manager
 	kubeletConfig := summary.GetKubeletConfig(clientConfig, o.KubeletPort, o.InsecureKubeletTLS, o.DeprecatedCompletelyInsecureKubelet)
-	kubeletClient, err := summary.KubeletClientFor(kubeletConfig)
+	kubeletClient, err := coreprometheus.KubeletClientFor(kubeletConfig)
 	if err != nil {
 		return fmt.Errorf("unable to construct a client to connect to the kubelets: %v", err)
 	}
@@ -184,7 +185,7 @@ func (o MetricsServerOptions) Run(stopCh <-chan struct{}) error {
 	}
 	addrResolver := summary.NewPriorityNodeAddressResolver(addrPriority)
 
-	sourceProvider := summary.NewSummaryProvider(informerFactory.Core().V1().Nodes().Lister(), kubeletClient, addrResolver)
+	sourceProvider := coreprometheus.NewCorePrometheusProvider(informerFactory.Core().V1().Nodes().Lister(), kubeletClient, addrResolver)
 	scrapeTimeout := time.Duration(float64(o.MetricResolution) * 0.90) // scrape timeout is 90% of the scrape interval
 	sources.RegisterDurationMetrics(scrapeTimeout)
 	sourceManager := sources.NewSourceManager(sourceProvider, scrapeTimeout)
