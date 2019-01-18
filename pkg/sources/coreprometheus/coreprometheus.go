@@ -17,11 +17,15 @@ package coreprometheus
 import (
 	"context"
 	"fmt"
+	"time"
 
+	"github.com/golang/glog"
 	"github.com/kubernetes-incubator/metrics-server/pkg/sources"
 	"github.com/kubernetes-incubator/metrics-server/pkg/sources/summary"
 
+	dto "github.com/prometheus/client_model/go"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/labels"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	v1listers "k8s.io/client-go/listers/core/v1"
@@ -61,7 +65,119 @@ func (src *prometheusMetricsSource) Collect(ctx context.Context) (*sources.Metri
 	if err != nil {
 		return nil, fmt.Errorf("unable to fetch metrics from Kubelet %s (%s): %v", src.node.Name, src.node.ConnectAddress, err)
 	}
-	return stats, nil
+
+	res := &sources.MetricsBatch{
+		Nodes: []sources.NodeMetricsPoint{
+			{
+				Name: src.node.Name,
+			},
+		},
+		Pods: []sources.PodMetricsPoint{},
+	}
+
+	for _, family := range stats {
+		name := family.GetName()
+		if family.GetType() != dto.MetricType_GAUGE {
+			// skip non-gauge metrics
+			continue
+		}
+		for _, metric := range family.GetMetric() {
+			info, err := getLabelInfo(metric.GetLabel())
+			if err != nil {
+				glog.Infof("error getting labels for metric %s: %v", name, err)
+				continue
+			}
+			timestamp := metric.GetTimestampMs()
+			value := int64(metric.GetGauge().GetValue())
+			if info.container == "machine" {
+				decodeMetric(name, value, timestamp, &res.Nodes[0].MetricsPoint)
+			} else if info.container != "pod_sandbox" {
+				src.decodePodStats(name, value, timestamp, info, &res.Pods)
+			}
+		}
+	}
+	return res, nil
+}
+
+func getLabelInfo(labels []*dto.LabelPair) (*labelInfo, error) {
+	info := &labelInfo{}
+	cFound, pFound, nFound := false, false, false
+	for _, label := range labels {
+		if label.GetName() == "container_name" {
+			cFound = true
+			info.container = label.GetValue()
+		} else if label.GetName() == "pod_name" {
+			pFound = true
+			info.pod = label.GetValue()
+		} else if label.GetName() == "pod_namespace" {
+			nFound = true
+			info.namespace = label.GetValue()
+		}
+	}
+	if !cFound || !pFound || !nFound {
+		return nil, fmt.Errorf("did not find labels %q, %q, and %q in labels %v", "container_name", "pod_name", "pod_namespace", labels)
+	}
+	return info, nil
+}
+
+type labelInfo struct {
+	container string
+	pod       string
+	namespace string
+}
+
+func (src *prometheusMetricsSource) decodePodStats(name string, value int64, timestampMs int64, info *labelInfo, targets *[]sources.PodMetricsPoint) {
+	for i, pod := range *targets {
+		if pod.Name != info.pod || pod.Namespace != info.namespace {
+			continue
+		}
+		if pod.Containers == nil {
+			pod.Containers = []sources.ContainerMetricsPoint{}
+		}
+		for j, container := range pod.Containers {
+			if container.Name != info.container {
+				continue
+			}
+			decodeMetric(name, value, timestampMs, &(*targets)[i].Containers[j].MetricsPoint)
+			return
+		}
+		point := sources.ContainerMetricsPoint{
+			Name: info.container,
+		}
+		decodeMetric(name, value, timestampMs, &point.MetricsPoint)
+		(*targets)[i].Containers = append(pod.Containers, point)
+		return
+	}
+	point := sources.PodMetricsPoint{
+		Name:      info.pod,
+		Namespace: info.namespace,
+		Containers: []sources.ContainerMetricsPoint{
+			{
+				Name: info.container,
+			},
+		},
+	}
+	decodeMetric(name, value, timestampMs, &point.Containers[0].MetricsPoint)
+	*targets = append(*targets, point)
+}
+
+func decodeMetric(name string, value int64, timestampMs int64, target *sources.MetricsPoint) {
+	if target == nil {
+		*target = sources.MetricsPoint{
+			Timestamp: time.Unix(0, timestampMs),
+		}
+	}
+	switch name {
+	case "cpu_usage_millicore_seconds":
+		usage := resource.NewMilliQuantity(value, resource.DecimalSI)
+		target.CpuUsage = *usage
+	case "memory_working_set_bytes":
+		usage := resource.NewQuantity(value, resource.DecimalSI)
+		target.MemoryUsage = *usage
+	case "ephemeral_storage_usage_bytes":
+		usage := resource.NewQuantity(value, resource.DecimalSI)
+		target.EphemeralStorageUsage = *usage
+	}
 }
 
 type corePrometheusProvider struct {

@@ -42,14 +42,6 @@
   revision = "3a771d992973f24aa725d07868b467d1ddfceafb"
 
 [[projects]]
-  digest = "1:998cf998358a303ac2430c386ba3fd3398477d6013153d3c6e11432765cc9ae6"
-  name = "github.com/cespare/xxhash"
-  packages = ["."]
-  pruneopts = "UT"
-  revision = "3b82fb7d186719faeedd0c2864f868c74fbf79a1"
-  version = "v2.0.0"
-
-[[projects]]
   digest = "1:5c0bb289ca4f1bc6a0e74943630fc804f3392a9ce9948b4e1088f3b1cd41038d"
   name = "github.com/coreos/etcd"
   packages = [
@@ -426,19 +418,6 @@
   ]
   pruneopts = "UT"
   revision = "40f013a808ec4fa79def444a1a56de4d1727efcb"
-
-[[projects]]
-  digest = "1:5229e9c5925be36ada711cc3c01b7fa34ecbbe0b2bc8ebeadfb0555024d23f9a"
-  name = "github.com/prometheus/prometheus"
-  packages = [
-    "pkg/labels",
-    "pkg/pool",
-    "pkg/textparse",
-    "pkg/value",
-  ]
-  pruneopts = "UT"
-  revision = "b639fe140c1f71b2cbad3fc322b17efe60839e7e"
-  version = "v2.6.1"
 
 [[projects]]
   digest = "1:645cabccbb4fa8aab25a956cbcbdf6a6845ca736b2c64e197ca7cbb9d210b939"
@@ -1013,9 +992,8 @@
     "github.com/onsi/ginkgo",
     "github.com/onsi/gomega",
     "github.com/prometheus/client_golang/prometheus",
-    "github.com/prometheus/prometheus/pkg/labels",
-    "github.com/prometheus/prometheus/pkg/pool",
-    "github.com/prometheus/prometheus/pkg/textparse",
+    "github.com/prometheus/client_model/go",
+    "github.com/prometheus/common/expfmt",
     "github.com/spf13/cobra",
     "k8s.io/api/core/v1",
     "k8s.io/apimachinery/pkg/api/errors",
