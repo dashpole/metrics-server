@@ -17,7 +17,9 @@ package app
 import (
 	"fmt"
 	"io"
+	"log"
 	"net"
+	"net/http"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -35,8 +37,11 @@ import (
 	"github.com/kubernetes-incubator/metrics-server/pkg/manager"
 	"github.com/kubernetes-incubator/metrics-server/pkg/provider/sink"
 	"github.com/kubernetes-incubator/metrics-server/pkg/sources"
+	"github.com/kubernetes-incubator/metrics-server/pkg/sources/coregrpc"
 	"github.com/kubernetes-incubator/metrics-server/pkg/sources/summary"
 )
+
+import _ "net/http/pprof"
 
 // NewCommandStartMetricsServer provides a CLI handler for the metrics server entrypoint
 func NewCommandStartMetricsServer(out, errOut io.Writer, stopCh <-chan struct{}) *cobra.Command {
@@ -172,7 +177,7 @@ func (o MetricsServerOptions) Run(stopCh <-chan struct{}) error {
 
 	// set up the source manager
 	kubeletConfig := summary.GetKubeletConfig(clientConfig, o.KubeletPort, o.InsecureKubeletTLS, o.DeprecatedCompletelyInsecureKubelet)
-	kubeletClient, err := summary.KubeletClientFor(kubeletConfig)
+	kubeletClient, err := coregrpc.KubeletClientFor(kubeletConfig)
 	if err != nil {
 		return fmt.Errorf("unable to construct a client to connect to the kubelets: %v", err)
 	}
@@ -184,7 +189,7 @@ func (o MetricsServerOptions) Run(stopCh <-chan struct{}) error {
 	}
 	addrResolver := summary.NewPriorityNodeAddressResolver(addrPriority)
 
-	sourceProvider := summary.NewSummaryProvider(informerFactory.Core().V1().Nodes().Lister(), kubeletClient, addrResolver)
+	sourceProvider := coregrpc.NewProvider(informerFactory.Core().V1().Nodes().Lister(), kubeletClient, addrResolver)
 	scrapeTimeout := time.Duration(float64(o.MetricResolution) * 0.90) // scrape timeout is 90% of the scrape interval
 	sources.RegisterDurationMetrics(scrapeTimeout)
 	sourceManager := sources.NewSourceManager(sourceProvider, scrapeTimeout)
@@ -205,6 +210,10 @@ func (o MetricsServerOptions) Run(stopCh <-chan struct{}) error {
 	if err != nil {
 		return err
 	}
+
+	go func() {
+		log.Println(http.ListenAndServe("localhost:6060", nil))
+	}()
 
 	// add health checks
 	server.AddHealthzChecks(healthz.NamedCheck("healthz", mgr.CheckHealth))

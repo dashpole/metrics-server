@@ -1,0 +1,48 @@
+// To regenerate api.pb.go run hack/update-generated-kubelet-plugin-registration.sh
+syntax = 'proto3';
+
+package corestats;
+
+import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+
+option (gogoproto.goproto_stringer_all) = false;
+option (gogoproto.stringer_all) =  true;
+option (gogoproto.goproto_getters_all) = true;
+option (gogoproto.marshaler_all) = true;
+option (gogoproto.sizer_all) = true;
+option (gogoproto.unmarshaler_all) = true;
+option (gogoproto.goproto_unrecognized_all) = false;
+
+message Usage {
+	int64 time = 1;
+	uint64 cpu_usage_nano_cores = 2;
+	uint64 memory_working_set_bytes = 3;
+	uint64 ephemeral_storage_usage_bytes = 4;
+}
+
+message PodUsage {
+	string name = 1;
+	string namespace = 2;
+	Usage usage = 3;
+	repeated ContainerUsage containers = 4;
+}
+
+message ContainerUsage {
+	string name = 1;
+	Usage usage = 2;
+}
+
+// StatsResponse is sent by plugin to kubelet in response to StatsRequest RPC
+message StatsResponse {
+	Usage node = 1;
+	repeated PodUsage pods = 2;
+}
+
+// StatsRequest is the empty request message for Kubelet
+message StatsRequest {
+}
+
+// CoreStats is the service advertised by the kubelet for stats.
+service CoreStats {
+	rpc Get(StatsRequest) returns (StatsResponse) {}
+}
